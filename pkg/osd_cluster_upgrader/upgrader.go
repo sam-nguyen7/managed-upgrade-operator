@@ -20,9 +20,9 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/openshift/managed-upgrade-operator/internal/machinery"
 	upgradev1alpha1 "github.com/openshift/managed-upgrade-operator/pkg/apis/upgrade/v1alpha1"
 	"github.com/openshift/managed-upgrade-operator/pkg/configmanager"
+	"github.com/openshift/managed-upgrade-operator/pkg/machinery"
 	"github.com/openshift/managed-upgrade-operator/pkg/maintenance"
 	"github.com/openshift/managed-upgrade-operator/pkg/metrics"
 	"github.com/openshift/managed-upgrade-operator/pkg/scaler"
@@ -286,7 +286,7 @@ func AllWorkersUpgraded(c client.Client, cfg *osdUpgradeConfig, scaler scaler.Sc
 		return false, nil
 	}
 
-	Upgrading, errUpgrade := machinery.IsUpgrading(c, "worker", logger)
+	upgrading, errUpgrade := machinery.IsUpgrading(c, "worker")
 	if errUpgrade != nil {
 		return false, errUpgrade
 	}
@@ -296,7 +296,7 @@ func AllWorkersUpgraded(c client.Client, cfg *osdUpgradeConfig, scaler scaler.Sc
 		return false, errSilence
 	}
 
-	if Upgrading {
+	if upgrading {
 		if !silenceActive {
 			logger.Info("Worker upgrade timeout.")
 			metricsClient.UpdateMetricUpgradeWorkerTimeout(upgradeConfig.Name, upgradeConfig.Spec.Desired.Version)

@@ -3,12 +3,12 @@ package nodekeeper
 import (
 	"context"
 	"fmt"
+	"time"
 
-	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -17,16 +17,15 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
-	"github.com/openshift/managed-upgrade-operator/internal/machinery"
-	upgradev1alpha1 "github.com/openshift/managed-upgrade-operator/pkg/apis/upgrade/v1alpha1"
+	"github.com/go-logr/logr"
+	"github.com/openshift/managed-upgrade-operator/pkg/configmanager"
+	"github.com/openshift/managed-upgrade-operator/pkg/machinery"
 	"github.com/openshift/managed-upgrade-operator/pkg/metrics"
+	"github.com/openshift/managed-upgrade-operator/pkg/nodeclient"
+	"github.com/openshift/managed-upgrade-operator/pkg/pdbclient"
 )
 
 var log = logf.Log.WithName("controller_nodekeeper")
-
-var (
-	pdbForceDrainTimeout int32
-)
 
 // Add creates a new NodeKeeper Controller and adds it to the Manager. The Manager will set fields on the Controller
 // and Start it when the Manager is Started.
@@ -38,9 +37,12 @@ func Add(mgr manager.Manager) error {
 func newReconciler(mgr manager.Manager) reconcile.Reconciler {
 	return &ReconcileNodeKeeper{
 		client:               mgr.GetClient(),
-		scheme:               mgr.GetScheme(),
-		metricsClientBuilder: metrics.NewBuilder(),
+		configManagerBuilder: configmanager.NewBuilder(),
 		machinery:            machinery.NewMachinery(),
+		metricsClientBuilder: metrics.NewBuilder(),
+		nodeClient:           nodeclient.NewNodeClient(),
+		pdbClient:            pdbclient.NewPDBClient(),
+		scheme:               mgr.GetScheme(),
 	}
 }
 
@@ -52,8 +54,18 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 		return err
 	}
 
+	//	if err = mgr.GetFieldIndexer().IndexField(&corev1.Pod{}, "spec.nodeName", func(rawObj runtime.Object) []string {
+	//		pod := rawObj.(*corev1.Pod)
+	//		return []string{pod.Spec.NodeName}
+	//	}); err != nil {
+	//		return err
+	//	}
+
 	// Watch for changes to primary resource Node, status change will not trigger a reconcile
-	err = c.Watch(&source.Kind{Type: &corev1.Node{}}, &handler.EnqueueRequestForObject{}, StatusChangedPredicate)
+	err = c.Watch(
+		&source.Kind{Type: &corev1.Node{}},
+		&handler.EnqueueRequestForObject{},
+		IgnoreMasterPredicate)
 	if err != nil {
 		return err
 	}
@@ -69,9 +81,12 @@ type ReconcileNodeKeeper struct {
 	// This client, initialized using mgr.Client() above, is a split client
 	// that reads objects from the cache and writes to the apiserver
 	client               client.Client
-	scheme               *runtime.Scheme
-	metricsClientBuilder metrics.MetricsBuilder
+	configManagerBuilder configmanager.ConfigManagerBuilder
 	machinery            machinery.Machinery
+	metricsClientBuilder metrics.MetricsBuilder
+	nodeClient           nodeclient.NodeClienter
+	pdbClient            pdbclient.PDBClienter
+	scheme               *runtime.Scheme
 }
 
 // Reconcile reads that state of the cluster for a UpgradeConfig object and makes changes based on the state read
@@ -84,86 +99,143 @@ func (r *ReconcileNodeKeeper) Reconcile(request reconcile.Request) (reconcile.Re
 	reqLogger.Info("Reconciling NodeKeeper")
 
 	// Determine if the cluster is upgrading
-	yes, err := r.machinery.IsUpgrading(r.client, "worker", reqLogger)
-	if err != nil {
-		// An error occurred, return it.
-		return reconcile.Result{}, err
-	} else if !yes {
-		// Nodes are not upgrading.
-		return reconcile.Result{}, nil
-	}
-
-	reqLogger.Info("Cluster is upgrading. Proceeding.")
-
-	// Initialise metrics
-	metricsClient, err := r.metricsClientBuilder.NewClient(r.client)
-	if err != nil {
-		return reconcile.Result{}, err
-	}
-
-	pdbForceDrainTimeout, err = getPDBForceDrainTimeout(r.client, reqLogger)
-	if err != nil {
-		if errors.IsNotFound(err) {
-			reqLogger.Info("UpgradeConfig not found. No further action.")
+	// TODO: This should go main.go so its not called every reconile
+	found := fakeUpgradeState()
+	if !found {
+		yes, err := r.machinery.IsUpgrading(r.client, "worker")
+		if err != nil {
+			// An error occurred, return it.
+			return reconcile.Result{}, err
+		} else if !yes {
+			reqLogger.Info("Cluster detected as NOT upgrading. Proceeding.")
 			return reconcile.Result{}, nil
 		}
-		return reconcile.Result{}, err
 	}
 
-	reqLogger.Info("Checking for PodDisruptionBudget alerts.")
+	reqLogger.Info("Cluster detected as upgrading. Proceeding.")
 
-	found, err := checkPDBAlerts(metricsClient)
+	//metricsClient, err := r.metricsClientBuilder.NewClient(r.client)
+	//if err != nil {
+	//	return reconcile.Result{}, err
+	//}
+
+	// Fetch the Node instance
+	instance := &corev1.Node{}
+	err := r.client.Get(context.TODO(), request.NamespacedName, instance)
 	if err != nil {
+		if errors.IsNotFound(err) {
+			// Request object not found, could have been deleted after reconcile request.
+			// Owned objects are automatically garbage collected. For additional cleanup logic use finalizers.
+			// Return and don't requeue
+			return reconcile.Result{}, nil
+		}
+		// Error reading the object - requeue the request.
 		return reconcile.Result{}, err
 	}
 
-	if !found {
-		log.Info("Found no PDB alerts. No further action")
+	// Determine if Node is draining.
+	if r.nodeClient.IsDraining(instance) {
+		reqLogger.Info(fmt.Sprintf("Node %s is identified as draining. Gathering configs for draining policies.", instance.Name))
+
+		// Confirm expected taint and retreive the start time of the drain.
+		drainStartedAtTimestamp, err := r.nodeClient.GetDrainStartedAtTimestamp(instance)
+		if err != nil {
+			return reconcile.Result{}, err
+		}
+
+		reqLogger.Info(fmt.Sprintf("Drain started at %v", drainStartedAtTimestamp))
+
+		// Get operatornamespace of operator as c.Watch is watching Node, a cluster scoped resource.
+		// Need this to get upgradeConfig and configmap.
+		operatorNamespace, err := configmanager.GetOperatorNamespace()
+		if err != nil {
+			return reconcile.Result{}, err
+		}
+
+		reqLogger.Info("Checking for PodDisruptionBudget alerts.")
+		alerts, pdbLabels, err := r.pdbClient.GetPDBAlertsWithLabels(r.client)
+		if err != nil {
+			return reconcile.Result{}, err
+		}
+
+		if alerts {
+			// Execute PDB flow.
+			reqLogger.Info(fmt.Sprintf("Found PDB alerts matching %s", pdbLabels))
+
+			pdbNodeDrainGracePeriodInMinutes, err := r.pdbClient.GetPDBForceDrainTimeout(r.client, operatorNamespace, reqLogger)
+			if err != nil {
+				if errors.IsNotFound(err) {
+					// TODO: should send alert here?
+					reqLogger.Info("UpgradeConfig not found. No further action.")
+					return reconcile.Result{}, nil
+				}
+				return reconcile.Result{}, err
+			}
+			reqLogger.Info(fmt.Sprintf("Set pdbNodeDrainGracePeriodInMinutes as %s", pdbNodeDrainGracePeriodInMinutes))
+
+			yes := r.nodeClient.IsTimeToDrain(drainStartedAtTimestamp, pdbNodeDrainGracePeriodInMinutes)
+			logDrainTimes(drainStartedAtTimestamp, pdbNodeDrainGracePeriodInMinutes, reqLogger)
+			if yes {
+				deletePods, err := r.pdbClient.GetPDBLabelPodsFromNode(r.client, pdbLabels, instance)
+				if err != nil {
+					return reconcile.Result{}, err
+				}
+				if len(deletePods.Items) == 0 {
+					// TODO: Alert here for unknown condition?
+					reqLogger.Info(fmt.Sprintf("Failed to get blocking pods on Node %s.", instance.Name))
+					return reconcile.Result{}, nil
+				}
+				for _, pod := range deletePods.Items {
+					err := r.client.Delete(context.TODO(), &pod)
+					if err != nil {
+						// TODO: Alert here?
+						reqLogger.Info(fmt.Sprintf("Failed deleting PDB pod %s from Node %s", pod.Name, instance.Name))
+						return reconcile.Result{}, err
+					}
+					reqLogger.Info(fmt.Sprintf("Sucessfully deleted PDB pod %s from Node %s", pod.Name, instance.Name))
+				}
+				if err != nil {
+					reqLogger.Info(fmt.Sprintf("Node %s failed to delete PDB blocking pods. Draining may have failed.", instance.Name))
+					return reconcile.Result{}, err
+				}
+				reqLogger.Info(fmt.Sprintf("Node %s had PDB blocking pods deleted to complete draining.", instance.Name))
+			}
+			reqLogger.Info(fmt.Sprintf("Node %s not ready to drain.", instance.Name))
+			reqLogger.Info("time.NOW < DrainAfterTimestamp. Requeuing")
+			return reconcile.Result{}, nil
+		}
+
+		/* Standard Node drain - No PDB */
+		log.Info("Found no PDB alerts. Evaluating Node drain times against SRE NodeDrainGracePeriod only.")
+		// Get nodeKeeperConfig
+		cfm := r.configManagerBuilder.New(r.client, operatorNamespace)
+		cfg := &nodeKeeperConfig{}
+		err = cfm.Into(cfg)
+		if err != nil {
+			return reconcile.Result{}, err
+		}
+		// Get the node drain related timeouts.
+		sreNodeDrainGracePeriodInMinutes := cfg.GetNodeDrainDuration()
+		reqLogger.Info(fmt.Sprintf("Set SRE NodeDrainGracePeriod as %s", sreNodeDrainGracePeriodInMinutes))
+
+		logDrainTimes(drainStartedAtTimestamp, sreNodeDrainGracePeriodInMinutes, reqLogger)
+
+		// MengBo PR
+		if drainStartedAtTimestamp.Add(sreNodeDrainGracePeriodInMinutes).Before(metav1.Now().Time) {
+			reqLogger.Info(fmt.Sprintf("The node cannot be drained within %d minutes.", int64(sreNodeDrainGracePeriodInMinutes)))
+		}
 		return reconcile.Result{}, nil
 	}
 
-	log.Info(fmt.Sprintf("Found PodDisruptionBudgetAtLimit Alert, Force Drain at: %d minutes", pdbForceDrainTimeout))
-
+	log.Info(fmt.Sprintf("Node %s not tainted. Requeuing.", instance.Name))
 	return reconcile.Result{}, nil
-
 }
 
-func checkPDBAlerts(mC metrics.Metrics) (bool, error) {
-	pdbAlertName := "PodDisruptionBudgetAtLimit"
-	var pdbAlerts *metrics.AlertResponse
-	pdbAlerts, err := mC.Query(fmt.Sprintf("ALERTS{alertname=\"%s\"}", pdbAlertName))
-
-	if err != nil {
-		return false, err
-	}
-
-	if len(pdbAlerts.Data.Result) == 0 {
-		return false, nil
-	}
-
-	return true, nil
-}
-
-func getUpgradeConfig(c client.Client, logger logr.Logger) (*upgradev1alpha1.UpgradeConfig, error) {
-	uCList := &upgradev1alpha1.UpgradeConfigList{}
-
-	err := c.List(context.TODO(), uCList)
-	if err != nil {
-		return nil, err
-	}
-
-	for _, uC := range uCList.Items {
-		return &uC, nil
-	}
-
-	return nil, errors.NewNotFound(schema.GroupResource{Group: upgradev1alpha1.SchemeGroupVersion.Group, Resource: "UpgradeConfig"}, "UpgradeConfig")
-}
-
-func getPDBForceDrainTimeout(c client.Client, logger logr.Logger) (int32, error) {
-	uC, err := getUpgradeConfig(c, logger)
-	if err != nil {
-		return 0, err
-	}
-	return uC.Spec.PDBForceDrainTimeout, nil
-
+// logDrainTimes logs times that determine if its time to drain a node.
+func logDrainTimes(drainStartedAtTimestamp metav1.Time, drainGracePeriodInMinutes time.Duration, logger logr.Logger) {
+	logger.Info(fmt.Sprintf("drainStartedAtTimestamp: %s", drainStartedAtTimestamp.UTC()))
+	logger.Info(fmt.Sprintf("drainGracePeriodInMinutes: %v", drainGracePeriodInMinutes.Minutes()))
+	drainAfterTimestamp := drainStartedAtTimestamp.Add(drainGracePeriodInMinutes)
+	logger.Info(fmt.Sprintf("drainAfterTimestamp: %s", drainAfterTimestamp.UTC()))
+	logger.Info(fmt.Sprintf("time.NOW: %s", metav1.Now().Time.UTC()))
 }

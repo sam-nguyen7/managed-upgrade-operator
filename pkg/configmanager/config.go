@@ -3,6 +3,8 @@ package configmanager
 import (
 	"context"
 	"fmt"
+	"os"
+
 	"github.com/openshift/managed-upgrade-operator/config"
 
 	"gopkg.in/yaml.v2"
@@ -10,9 +12,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-var (
-	CONFIG_MAP_NAME = config.OperatorName + "-config"
-	CONFIG_PATH     = "config.yaml"
+const (
+	envVarOperatorNamespace = "OPERATOR_NAMESPACE"
+	CONFIG_MAP_NAME         = config.OperatorName + "-config"
+	CONFIG_PATH             = "config.yaml"
 )
 
 // Interface describing the functions of a cluster upgrader.
@@ -62,4 +65,14 @@ func (cm *configManager) Into(into ConfigValidator) error {
 	}
 
 	return into.IsValid()
+}
+
+// GetOperatorNamespace retrieves the operators namespace from an environment
+// variable and returns it to the caller.
+func GetOperatorNamespace() (string, error) {
+	ns, found := os.LookupEnv(envVarOperatorNamespace)
+	if !found {
+		return "", fmt.Errorf("%s must be set", envVarOperatorNamespace)
+	}
+	return ns, nil
 }

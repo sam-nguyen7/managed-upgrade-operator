@@ -2,13 +2,12 @@
 package machinery
 
 import (
-	"github.com/go-logr/logr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-//go:generate mockgen -destination=mocks/machinery.go -package=mocks github.com/openshift/managed-upgrade-operator/internal/machinery Machinery
+//go:generate mockgen -destination=mocks/machinery.go -package=mocks github.com/openshift/managed-upgrade-operator/pkg/machinery Machinery
 type Machinery interface {
-	IsUpgrading(c client.Client, nodeType string, logger logr.Logger) (bool, error)
+	IsUpgrading(c client.Client, nodeType string) (bool, error)
 }
 
 type machinery struct{}

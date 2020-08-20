@@ -17,9 +17,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
-	"github.com/openshift/managed-upgrade-operator/internal/machinery"
-	mockMachinery "github.com/openshift/managed-upgrade-operator/internal/machinery/mocks"
 	upgradev1alpha1 "github.com/openshift/managed-upgrade-operator/pkg/apis/upgrade/v1alpha1"
+	"github.com/openshift/managed-upgrade-operator/pkg/machinery"
+	mockMachinery "github.com/openshift/managed-upgrade-operator/pkg/machinery/mocks"
 	"github.com/openshift/managed-upgrade-operator/pkg/maintenance"
 	mockMaintenance "github.com/openshift/managed-upgrade-operator/pkg/maintenance/mocks"
 	"github.com/openshift/managed-upgrade-operator/pkg/metrics"
@@ -342,7 +342,7 @@ var _ = Describe("ClusterUpgrader", func() {
 			It("Indicates that all workers are upgraded", func() {
 				gomock.InOrder(
 					mockKubeClient.EXPECT().List(gomock.Any(), gomock.Any()).Times(2),
-					mockMachineryClient.EXPECT().IsUpgrading(gomock.Any(), "worker", gomock.Any()).Return(false, nil),
+					mockMachineryClient.EXPECT().IsUpgrading(gomock.Any(), "worker").Return(false, nil),
 					mockMaintClient.EXPECT().IsActive(),
 					mockMetricsClient.EXPECT().IsMetricNodeUpgradeEndTimeSet(upgradeConfig.Name, upgradeConfig.Spec.Desired.Version),
 					mockMetricsClient.EXPECT().UpdateMetricNodeUpgradeEndTime(gomock.Any(), upgradeConfig.Name, upgradeConfig.Spec.Desired.Version),
@@ -357,7 +357,7 @@ var _ = Describe("ClusterUpgrader", func() {
 			It("Indicates that all workers are not upgraded", func() {
 				gomock.InOrder(
 					mockKubeClient.EXPECT().List(gomock.Any(), gomock.Any()).Times(2),
-					mockMachineryClient.EXPECT().IsUpgrading(gomock.Any(), "worker", gomock.Any()).Return(true, nil),
+					mockMachineryClient.EXPECT().IsUpgrading(gomock.Any(), "worker").Return(true, nil),
 					mockMaintClient.EXPECT().IsActive(),
 					mockMetricsClient.EXPECT().UpdateMetricUpgradeWorkerTimeout(upgradeConfig.Name, upgradeConfig.Spec.Desired.Version),
 				)
@@ -530,8 +530,8 @@ var _ = Describe("ClusterUpgrader", func() {
 
 			Context("When getting the machine config pool fails", func() {
 				It("Indicates that all machines aren't upgraded", func() {
-					mockMachineryClient.EXPECT().IsUpgrading(gomock.Any(), "worker", gomock.Any()).Return(false, nil)
-					result, err := mockMachineryClient.IsUpgrading(mockKubeClient, nodeType, logger)
+					mockMachineryClient.EXPECT().IsUpgrading(gomock.Any(), "worker").Return(false, nil)
+					result, err := mockMachineryClient.IsUpgrading(mockKubeClient, nodeType)
 					Expect(err).NotTo(HaveOccurred())
 					Expect(result).To(BeFalse())
 				})
@@ -539,16 +539,16 @@ var _ = Describe("ClusterUpgrader", func() {
 
 			Context("When all total machine and updated machine counts match", func() {
 				It("Reports that all nodes are upgraded", func() {
-					mockMachineryClient.EXPECT().IsUpgrading(gomock.Any(), "worker", gomock.Any()).Return(false, nil)
-					result, err := mockMachineryClient.IsUpgrading(mockKubeClient, nodeType, logger)
+					mockMachineryClient.EXPECT().IsUpgrading(gomock.Any(), "worker").Return(false, nil)
+					result, err := mockMachineryClient.IsUpgrading(mockKubeClient, nodeType)
 					Expect(err).NotTo(HaveOccurred())
 					Expect(result).To(BeFalse())
 				})
 			})
 			Context("When the updated machine count is less than the total machine count", func() {
 				It("Reports that all nodes are not upgraded", func() {
-					mockMachineryClient.EXPECT().IsUpgrading(gomock.Any(), "worker", gomock.Any()).Return(true, nil)
-					result, err := mockMachineryClient.IsUpgrading(mockKubeClient, nodeType, logger)
+					mockMachineryClient.EXPECT().IsUpgrading(gomock.Any(), "worker").Return(true, nil)
+					result, err := mockMachineryClient.IsUpgrading(mockKubeClient, nodeType)
 					Expect(err).NotTo(HaveOccurred())
 					Expect(result).To(BeTrue())
 				})
@@ -556,8 +556,8 @@ var _ = Describe("ClusterUpgrader", func() {
 			Context("When the updated machine count is greater than the total machine count", func() {
 				// TODO: Assess - does this make sense?
 				It("Reports that all nodes are not upgraded", func() {
-					mockMachineryClient.EXPECT().IsUpgrading(gomock.Any(), "worker", gomock.Any()).Return(true, nil)
-					result, err := mockMachineryClient.IsUpgrading(mockKubeClient, nodeType, logger)
+					mockMachineryClient.EXPECT().IsUpgrading(gomock.Any(), "worker").Return(true, nil)
+					result, err := mockMachineryClient.IsUpgrading(mockKubeClient, nodeType)
 					Expect(err).NotTo(HaveOccurred())
 					Expect(result).To(BeTrue())
 				})
