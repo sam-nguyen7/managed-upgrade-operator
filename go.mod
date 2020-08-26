@@ -16,6 +16,7 @@ require (
 	github.com/onsi/ginkgo v1.12.0
 	github.com/onsi/gomega v1.10.0
 	github.com/openshift/api v0.0.0-20200522173408-17ada6e4245b
+	github.com/openshift/aws-account-operator v0.0.0-20200819151735-cc194b464800 // indirect
 	github.com/openshift/cluster-version-operator v3.11.1-0.20190629164025-08cac1c02538+incompatible
 	github.com/openshift/machine-api-operator v0.2.1-0.20200226185612-9b0170a1ba07
 	github.com/openshift/machine-config-operator v4.2.0-alpha.0.0.20190917115525-033375cbe820+incompatible
@@ -26,6 +27,7 @@ require (
 	github.com/prometheus/common v0.9.1
 	github.com/spf13/pflag v1.0.5
 	github.com/vincent-petithory/dataurl v0.0.0-20191104211930-d1553a71de50 // indirect
+	go.etcd.io/etcd v0.0.0-20191023171146-3cf2f69b5738
 	golang.org/x/net v0.0.0-20200506145744-7e3656a0809f // indirect
 	golang.org/x/sys v0.0.0-20200509044756-6aff5f38e54f // indirect
 	golang.org/x/tools v0.0.0-20200522201501-cb1345f3a375 // indirect

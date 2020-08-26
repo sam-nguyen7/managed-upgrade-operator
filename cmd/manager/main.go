@@ -22,13 +22,15 @@ import (
 	"github.com/openshift/managed-upgrade-operator/pkg/controller"
 	"github.com/openshift/managed-upgrade-operator/version"
 	"github.com/operator-framework/operator-sdk/pkg/k8sutil"
-	"github.com/operator-framework/operator-sdk/pkg/kube-metrics"
+	kubemetrics "github.com/operator-framework/operator-sdk/pkg/kube-metrics"
 	"github.com/operator-framework/operator-sdk/pkg/leader"
 	"github.com/operator-framework/operator-sdk/pkg/log/zap"
 	"github.com/operator-framework/operator-sdk/pkg/metrics"
 	sdkVersion "github.com/operator-framework/operator-sdk/version"
 	"github.com/spf13/pflag"
-	"k8s.io/api/core/v1"
+	corev1 "k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
+	apiruntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
@@ -124,6 +126,16 @@ func main() {
 
 	log.Info("Registering Components.")
 
+	// Add the `spec.nodeName` field for pods to the mgr as the given cache-backend client
+	// does not support server-side indexes. This is used to return all pods for a given node.
+	if err := mgr.GetFieldIndexer().IndexField(&corev1.Pod{}, "spec.nodeName", func(rawObj apiruntime.Object) []string {
+		pod := rawObj.(*corev1.Pod)
+		return []string{pod.Spec.NodeName}
+	}); err != nil {
+		log.Error(err, "")
+		os.Exit(1)
+	}
+
 	// Setup Scheme for all resources
 	if err := apis.AddToScheme(mgr.GetScheme()); err != nil {
 		log.Error(err, "")
@@ -134,7 +146,6 @@ func main() {
 		log.Error(err, "")
 		os.Exit(1)
 	}
-
 
 	if err = routev1.Install(mgr.GetScheme()); err != nil {
 		log.Error(err, "")

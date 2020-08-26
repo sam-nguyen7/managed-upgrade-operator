@@ -214,8 +214,8 @@ func CommenceUpgrade(c client.Client, cfg *osdUpgradeConfig, scaler scaler.Scale
 
 // CreateControlPlaneMaintWindow creates the maintenance window for control plane
 func CreateControlPlaneMaintWindow(c client.Client, cfg *osdUpgradeConfig, scaler scaler.Scaler, metricsClient metrics.Metrics, m maintenance.Maintenance, upgradeConfig *upgradev1alpha1.UpgradeConfig, machinery machinery.Machinery, logger logr.Logger) (bool, error) {
-	endTime := time.Now().Add(cfg.GetControlPlaneDuration())
-	err := m.StartControlPlane(endTime, upgradeConfig.Spec.Desired.Version)
+	endTime := time.Now().Add(cfg.Maintenance.GetControlPlaneDuration())
+	err := m.StartControlPlane(endTime, upgradeConfig.Spec.Desired.Version, cfg.Maintenance.IgnoredAlerts.ControlPlaneCriticals)
 	if err != nil {
 		return false, err
 	}
@@ -426,7 +426,7 @@ func RemoveMaintWindow(c client.Client, cfg *osdUpgradeConfig, scaler scaler.Sca
 
 // PostClusterHealthCheck performs cluster health check after upgrade
 func PostClusterHealthCheck(c client.Client, cfg *osdUpgradeConfig, scaler scaler.Scaler, metricsClient metrics.Metrics, m maintenance.Maintenance, upgradeConfig *upgradev1alpha1.UpgradeConfig, machinery machinery.Machinery, logger logr.Logger) (bool, error) {
-	ok, err := performClusterHealthCheck(c, metricsClient, logger)
+	ok, err := performClusterHealthCheck(c, metricsClient, cfg, logger)
 	if err != nil || !ok {
 		metricsClient.UpdateMetricClusterCheckFailed(upgradeConfig.Name)
 		return false, err

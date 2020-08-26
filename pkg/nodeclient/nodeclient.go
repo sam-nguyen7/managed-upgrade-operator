@@ -2,17 +2,21 @@
 package nodeclient
 
 import (
+	"context"
 	"fmt"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/fields"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 type NodeClienter interface {
 	IsDraining(node *corev1.Node) bool
 	GetDrainStartedAtTimestamp(node *corev1.Node) (metav1.Time, error)
 	IsTimeToDrain(drainStartedAtTimestamp metav1.Time, drainGracePeriodInMinutes time.Duration) bool
+	GetPodsFromNode(c client.Client, node *corev1.Node) (*corev1.PodList, error)
 }
 
 type nodeClient struct{}
@@ -59,4 +63,32 @@ func (nodeC *nodeClient) IsTimeToDrain(drainStartedAtTimestamp metav1.Time, drai
 		return true
 	}
 	return false
+}
+
+// GetPodsFromNode returns a curated PodList for a given node. Daemon sets are removed
+// from the list.
+func (nodeC *nodeClient) GetPodsFromNode(c client.Client, node *corev1.Node) (*corev1.PodList, error) {
+	allPods := &corev1.PodList{}
+	curatedPods := &corev1.PodList{}
+	nodeMap := make(map[string]string)
+	nodeMap["spec.nodeName"] = node.Name
+	nodeField := fields.Set(nodeMap)
+
+	listOpts := []client.ListOption{
+		client.MatchingFieldsSelector{Selector: nodeField.AsSelector()},
+	}
+	err := c.List(context.TODO(), allPods, listOpts...)
+	if err != nil {
+		return curatedPods, err
+	}
+
+	// Exclude pods that belong to daemon sets.
+	for _, pod := range allPods.Items {
+		for _, OwnerRef := range pod.OwnerReferences {
+			if OwnerRef.Kind != "DaemonSet" {
+				curatedPods.Items = append(curatedPods.Items, pod)
+			}
+		}
+	}
+	return curatedPods, nil
 }

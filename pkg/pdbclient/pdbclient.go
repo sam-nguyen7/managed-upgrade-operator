@@ -7,6 +7,7 @@ import (
 	"github.com/go-logr/logr"
 	"github.com/openshift/managed-upgrade-operator/config"
 	corev1 "k8s.io/api/core/v1"
+
 	policyv1beta1 "k8s.io/api/policy/v1beta1"
 	"k8s.io/apimachinery/pkg/labels"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -72,7 +73,7 @@ func (pdbC *pdbClient) GetPDBLabelPodsFromNode(c client.Client, pdbLabels pdbLab
 	// TODO: we should be able to return target node with FieldsSelector elegantly
 	//	nodeMap := make(map[string]string)
 	//	nodeMap["spec.nodeName="] = node.Name
-	//	nodeL := fields.Set(nodeMap)
+	//nodeL := fields.Set(nodeMap)
 	//client.MatchingFieldsSelector{Selector: nodeL.AsSelector()},
 	foundPods := &corev1.PodList{}
 	podList := &corev1.PodList{}

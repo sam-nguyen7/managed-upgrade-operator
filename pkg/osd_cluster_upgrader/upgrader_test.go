@@ -208,7 +208,7 @@ var _ = Describe("ClusterUpgrader", func() {
 					Items: []configv1.ClusterVersion{
 						{
 							Spec: configv1.ClusterVersionSpec{
-								Channel: upgradeConfig.Spec.Desired.Channel + "not-the-same",
+								Channel:       upgradeConfig.Spec.Desired.Channel + "not-the-same",
 								DesiredUpdate: nil,
 							},
 						},
@@ -223,7 +223,7 @@ var _ = Describe("ClusterUpgrader", func() {
 							return nil
 						}),
 				)
-				result, err := CommenceUpgrade(mockKubeClient, config, mockScalerClient, mockMetricsClient, mockMaintClient, upgradeConfig, logger)
+				result, err := CommenceUpgrade(mockKubeClient, config, mockScalerClient, mockMetricsClient, mockMaintClient, upgradeConfig, mockMachineryClient, logger)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(result).To(BeFalse())
 
@@ -245,7 +245,7 @@ var _ = Describe("ClusterUpgrader", func() {
 					Items: []configv1.ClusterVersion{
 						{
 							Spec: configv1.ClusterVersionSpec{
-								Channel: upgradeConfig.Spec.Desired.Channel,
+								Channel:       upgradeConfig.Spec.Desired.Channel,
 								DesiredUpdate: nil,
 							},
 							Status: configv1.ClusterVersionStatus{
