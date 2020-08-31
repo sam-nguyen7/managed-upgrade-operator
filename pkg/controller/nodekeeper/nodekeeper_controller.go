@@ -188,16 +188,14 @@ func (r *ReconcileNodeKeeper) Reconcile(request reconcile.Request) (reconcile.Re
 			if yes {
 				reqLogger.Info(fmt.Sprintf("Node %s ready to drain.", instance.Name))
 				for _, pod := range pdbPods.Items {
-					err := r.client.Delete(context.TODO(), &pod)
+					err = poddeleter.ForceDeletePod(r.client, &pod)
 					if err != nil {
-						// TODO: Alert here?
 						reqLogger.Info(fmt.Sprintf("Failed deleting PDB pod %s from Node %s", pod.Name, instance.Name))
 						return reconcile.Result{}, err
 					}
 					reqLogger.Info(fmt.Sprintf("Sucessfully deleted PDB pod %s from Node %s", pod.Name, instance.Name))
-					// QUERY: we should return here and allow reconcile to see if node still draining VS poll IsNodeDraining ?
-					return reconcile.Result{}, nil
 				}
+				return reconcile.Result{}, nil
 			}
 			reqLogger.Info(fmt.Sprintf("Node %s not ready to drain.", instance.Name))
 			reqLogger.Info("time.NOW < DrainAfterTimestamp. Requeuing")
@@ -206,6 +204,7 @@ func (r *ReconcileNodeKeeper) Reconcile(request reconcile.Request) (reconcile.Re
 
 		/* Standard Node drain - No PDB */
 		log.Info("Found no PDB alerts. Evaluating Node drain times against SRE NodeDrainGracePeriod only.")
+
 		// Get nodeKeeperConfig
 		cfm := r.configManagerBuilder.New(r.client, operatorNamespace)
 		cfg := &nodeKeeperConfig{}
@@ -226,19 +225,24 @@ func (r *ReconcileNodeKeeper) Reconcile(request reconcile.Request) (reconcile.Re
 				return reconcile.Result{}, err
 			}
 			if len(deletePods.Items) == 0 {
+				// TODO: Alert for unknown condition?
 				return reconcile.Result{}, fmt.Errorf(fmt.Sprintf("Node %s identified as draining but has no pods", instance.Name))
 			}
 			for _, pod := range deletePods.Items {
-				err = poddeleter.ForceDeletePods(r.client, &pod)
+				err = poddeleter.ForceDeletePod(r.client, &pod)
 				if err != nil {
 					return reconcile.Result{}, err
 				}
 				reqLogger.Info(fmt.Sprintf("Sucessfully deleted pod %s from Node %s", pod.Name, instance.Name))
 			}
 		}
+		reqLogger.Info(fmt.Sprintf("Node %s not ready to drain.", instance.Name))
+		reqLogger.Info("time.NOW < DrainAfterTimestamp. Requeuing")
+		return reconcile.Result{}, nil
+	} else {
+		log.Info(fmt.Sprintf("Node %s not tainted. Requeuing.", instance.Name))
 	}
 
-	log.Info(fmt.Sprintf("Node %s not tainted. Requeuing.", instance.Name))
 	return reconcile.Result{}, nil
 }
 

@@ -82,13 +82,27 @@ func (nodeC *nodeClient) GetPodsFromNode(c client.Client, node *corev1.Node) (*c
 		return curatedPods, err
 	}
 
-	// Exclude pods that belong to daemon sets.
-	for _, pod := range allPods.Items {
-		for _, OwnerRef := range pod.OwnerReferences {
-			if OwnerRef.Kind != "DaemonSet" {
-				curatedPods.Items = append(curatedPods.Items, pod)
+	curatedPods = getCuratedPods(allPods)
+	return curatedPods, nil
+}
+
+// getCuratedPods excludes pods that belong to daemon sets.
+// If a pod has an OwnerReferences field present and that field has a
+// Kind that is not a DaemonSet, append that pod to list of pods to delete.
+// Also append any pods that do not have any OwnerReferences.
+func getCuratedPods(pL *corev1.PodList) *corev1.PodList {
+	curatedPods := &corev1.PodList{}
+
+	for _, pod := range pL.Items {
+		if len(pod.OwnerReferences) > 0 {
+			for _, OwnerRef := range pod.OwnerReferences {
+				if OwnerRef.Kind != "DaemonSet" {
+					curatedPods.Items = append(curatedPods.Items, pod)
+				}
 			}
+		} else {
+			curatedPods.Items = append(curatedPods.Items, pod)
 		}
 	}
-	return curatedPods, nil
+	return curatedPods
 }
