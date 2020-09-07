@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-logr/logr"
 	machineapi "github.com/openshift/machine-api-operator/pkg/apis/machine/v1beta1"
+	"github.com/openshift/managed-upgrade-operator/pkg/controller/nodekeeper"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -180,7 +181,7 @@ func (s *machineSetScaler) EnsureScaleDownNodes(c client.Client, logger logr.Log
 	// Desired replicas should match worker and infra count of nodes.
 	nonMasterNodes := &corev1.NodeList{}
 	err = c.List(context.TODO(), nonMasterNodes, []client.ListOption{
-		NotMatchingLabels{"node-role.kubernetes.io/master": ""},
+		NotMatchingLabels{nodekeeper.MasterLabel: ""},
 	}...)
 	if err != nil {
 		logger.Error(err, "failed to list nodes")
