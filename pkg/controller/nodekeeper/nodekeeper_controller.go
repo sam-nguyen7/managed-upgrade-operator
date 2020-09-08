@@ -128,121 +128,135 @@ func (r *ReconcileNodeKeeper) Reconcile(request reconcile.Request) (reconcile.Re
 	}
 
 	// Determine if Node is draining.
-	if r.nodeClient.IsDraining(instance) {
-		reqLogger.Info(fmt.Sprintf("Node %s is identified as draining. Gathering configs for draining policies.", instance.Name))
-
-		// Confirm expected taint and retreive the start time of the drain.
-		drainStartedAtTimestamp, err := r.nodeClient.GetDrainStartedAtTimestamp(instance)
-		if err != nil {
-			return reconcile.Result{}, err
-		}
-
-		reqLogger.Info(fmt.Sprintf("Drain started at %v", drainStartedAtTimestamp))
-
-		// Get operatornamespace of operator as c.Watch is watching Node, a cluster scoped resource.
-		// Need this to get upgradeConfig and configmap.
-		operatorNamespace, err := configmanager.GetOperatorNamespace()
-		if err != nil {
-			return reconcile.Result{}, err
-		}
-
-		reqLogger.Info("Checking for PodDisruptionBudget alerts.")
-		pdbAlerts, pdbLabels, err := r.pdbClient.GetPDBAlertsWithLabels(r.client)
-		if err != nil {
-			return reconcile.Result{}, err
-		}
-
-		// Declare these vars in this scope for PDB vs normal node drain analysis
-		var pdbAlertsOnNode = true
-		var pdbPods *corev1.PodList
-
-		if pdbAlerts {
-			// Are the PDB pods on target node?
-			pdbPods, err = r.pdbClient.GetPDBLabelPodsFromNode(r.client, pdbLabels, instance)
-			if err != nil {
-				return reconcile.Result{}, err
-			}
-			if len(pdbPods.Items) == 0 {
-				reqLogger.Info(fmt.Sprintf("PDB pods not on Node %s.", instance.Name))
-				pdbAlertsOnNode = false
-			}
-		}
-
-		if pdbAlertsOnNode {
-			// Execute PDB flow.
-			reqLogger.Info(fmt.Sprintf("Found PDB alerts matching %s", pdbLabels))
-
-			pdbNodeDrainGracePeriodInMinutes, err := r.pdbClient.GetPDBForceDrainTimeout(r.client, operatorNamespace, reqLogger)
-			if err != nil {
-				if errors.IsNotFound(err) {
-					// TODO: should send alert here?
-					reqLogger.Info("UpgradeConfig not found. No further action.")
-					return reconcile.Result{}, nil
-				}
-				return reconcile.Result{}, err
-			}
-			reqLogger.Info(fmt.Sprintf("Set pdbNodeDrainGracePeriodInMinutes as %s", pdbNodeDrainGracePeriodInMinutes))
-
-			yes := r.nodeClient.IsTimeToDrain(drainStartedAtTimestamp, pdbNodeDrainGracePeriodInMinutes)
-			logDrainTimes(drainStartedAtTimestamp, pdbNodeDrainGracePeriodInMinutes, reqLogger)
-			if yes {
-				reqLogger.Info(fmt.Sprintf("Node %s ready to drain.", instance.Name))
-				for _, pod := range pdbPods.Items {
-					err = poddeleter.ForceDeletePod(r.client, &pod)
-					if err != nil {
-						reqLogger.Info(fmt.Sprintf("Failed deleting PDB pod %s from Node %s", pod.Name, instance.Name))
-						return reconcile.Result{}, err
-					}
-					reqLogger.Info(fmt.Sprintf("Sucessfully deleted PDB pod %s from Node %s", pod.Name, instance.Name))
-				}
-				return reconcile.Result{}, nil
-			}
-			reqLogger.Info(fmt.Sprintf("Node %s not ready to drain.", instance.Name))
-			reqLogger.Info("time.NOW < DrainAfterTimestamp. Requeuing")
-			return reconcile.Result{}, nil
-		}
-
-		/* Standard Node drain - No PDB */
-		log.Info("Found no PDB alerts. Evaluating Node drain times against SRE NodeDrainGracePeriod only.")
-
-		// Get nodeKeeperConfig
-		cfm := r.configManagerBuilder.New(r.client, operatorNamespace)
-		cfg := &nodeKeeperConfig{}
-		err = cfm.Into(cfg)
-		if err != nil {
-			return reconcile.Result{}, err
-		}
-		// Get the node drain related timeouts.
-		sreNodeDrainGracePeriodInMinutes := cfg.GetNodeDrainDuration()
-		reqLogger.Info(fmt.Sprintf("Set SRE NodeDrainGracePeriod as %s", sreNodeDrainGracePeriodInMinutes))
-		yes := r.nodeClient.IsTimeToDrain(drainStartedAtTimestamp, sreNodeDrainGracePeriodInMinutes)
-		logDrainTimes(drainStartedAtTimestamp, sreNodeDrainGracePeriodInMinutes, reqLogger)
-		if yes {
-			// Get all pods on target node and delete them
-			reqLogger.Info(fmt.Sprintf("Node %s ready to drain.", instance.Name))
-			deletePods, err := r.nodeClient.GetPodsFromNode(r.client, instance)
-			if err != nil {
-				return reconcile.Result{}, err
-			}
-			if len(deletePods.Items) == 0 {
-				// TODO: Alert for unknown condition?
-				return reconcile.Result{}, fmt.Errorf(fmt.Sprintf("Node %s identified as draining but has no pods", instance.Name))
-			}
-			for _, pod := range deletePods.Items {
-				err = poddeleter.ForceDeletePod(r.client, &pod)
-				if err != nil {
-					return reconcile.Result{}, err
-				}
-				reqLogger.Info(fmt.Sprintf("Sucessfully deleted pod %s from Node %s", pod.Name, instance.Name))
-			}
-		}
-		reqLogger.Info(fmt.Sprintf("Node %s not ready to drain.", instance.Name))
-		reqLogger.Info("time.NOW < DrainAfterTimestamp. Requeuing")
-		return reconcile.Result{}, nil
-	} else {
+	if !r.nodeClient.IsDraining(instance) {
 		log.Info(fmt.Sprintf("Node %s not tainted. Requeuing.", instance.Name))
+		return reconcile.Result{}, nil
 	}
 
+	reqLogger.Info(fmt.Sprintf("Node %s is identified as draining. Gathering configs for draining policies.", instance.Name))
+
+	// Get operatornamespace of operator as c.Watch is watching Node, a cluster scoped resource.
+	// Need this to get upgradeConfig and configmap.
+	operatorNamespace, err := configmanager.GetOperatorNamespace()
+	if err != nil {
+		return reconcile.Result{}, err
+	}
+
+	/* Given a draining node, collect:
+	- current node drain duration
+	- PDB force drain duration
+	- SRE force drain duration
+	Ascertain the greater force drain duration + 15 mins and alert if current node drain duration
+	is greater as this indicates a failing node drain not handled by MUO. */
+
+	// Confirm expected taint and retreive the start time of the drain.
+	drainStartedAtTimestamp, err := r.nodeClient.GetDrainStartedAtTimestamp(instance)
+	if err != nil {
+		return reconcile.Result{}, err
+	}
+
+	reqLogger.Info(fmt.Sprintf("Drain started at %v", drainStartedAtTimestamp))
+
+	pdbNodeDrainGracePeriodInMinutes, err := r.pdbClient.GetPDBForceDrainTimeout(r.client, operatorNamespace, reqLogger)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			// Alert? This should already be alerted elsewhere.
+			reqLogger.Info("UpgradeConfig not found. No further action.")
+			return reconcile.Result{}, nil
+		}
+		return reconcile.Result{}, err
+	}
+	reqLogger.Info(fmt.Sprintf("Set pdbNodeDrainGracePeriodInMinutes as %s", pdbNodeDrainGracePeriodInMinutes))
+
+	// Get nodeKeeperConfig
+	cfm := r.configManagerBuilder.New(r.client, operatorNamespace)
+	cfg := &nodeKeeperConfig{}
+	err = cfm.Into(cfg)
+	if err != nil {
+		return reconcile.Result{}, err
+	}
+	// Get the node drain related timeouts.
+	sreNodeDrainGracePeriodInMinutes := cfg.GetNodeDrainDuration()
+	reqLogger.Info(fmt.Sprintf("Set SRE NodeDrainGracePeriod as %s", sreNodeDrainGracePeriodInMinutes))
+
+	forceDrainDuration := getGreaterForceDrainDuration(pdbNodeDrainGracePeriodInMinutes, sreNodeDrainGracePeriodInMinutes)
+	// Add 15 minutes to allow a force drain to complete before alerting.
+	forceDrainDuration = forceDrainDuration + time.Minute*10
+
+	// Evaluate if a node has failed its force drain duration and requires alerting.
+	if drainStartedAtTimestamp.Add(forceDrainDuration).Before(metav1.Now().Time) {
+		reqLogger.Info(fmt.Sprintf("Failed to force drain node %s. Alert SREP", instance.Name))
+	}
+
+	reqLogger.Info("Checking for PodDisruptionBudget alerts.")
+	pdbAlerts, pdbLabels, err := r.pdbClient.GetPDBAlertsWithLabels(r.client)
+	if err != nil {
+		return reconcile.Result{}, err
+	}
+
+	// Declare these vars in this scope for PDB vs normal node drain analysis
+	var pdbAlertsOnNode = true
+	var pdbPods *corev1.PodList
+
+	if pdbAlerts {
+		// Check if PDB pods are on node instance
+		pdbPods, err = r.pdbClient.GetPDBLabelPodsFromNode(r.client, pdbLabels, instance)
+		if err != nil {
+			return reconcile.Result{}, err
+		}
+		if len(pdbPods.Items) == 0 {
+			reqLogger.Info(fmt.Sprintf("PDB pods not on Node %s.", instance.Name))
+			pdbAlertsOnNode = false
+		}
+	}
+
+	if pdbAlertsOnNode {
+		// Execute PDB flow.
+		reqLogger.Info(fmt.Sprintf("Found PDB alerts matching %s", pdbLabels))
+		yes := r.nodeClient.IsTimeToDrain(drainStartedAtTimestamp, pdbNodeDrainGracePeriodInMinutes)
+		logDrainTimes(drainStartedAtTimestamp, pdbNodeDrainGracePeriodInMinutes, reqLogger)
+		if yes {
+			reqLogger.Info(fmt.Sprintf("Node %s ready to drain.", instance.Name))
+			for _, pod := range pdbPods.Items {
+				err = poddeleter.ForceDeletePod(r.client, &pod)
+				if err != nil {
+					reqLogger.Info(fmt.Sprintf("Failed deleting PDB pod %s from Node %s", pod.Name, instance.Name))
+					return reconcile.Result{}, err
+				}
+				reqLogger.Info(fmt.Sprintf("Sucessfully deleted PDB pod %s from Node %s", pod.Name, instance.Name))
+			}
+			return reconcile.Result{}, nil
+		}
+		reqLogger.Info(fmt.Sprintf("Node %s not ready to drain.", instance.Name))
+		return reconcile.Result{}, nil
+	}
+
+	/* Standard Node drain - Non-PDB */
+	log.Info("Found no PDB alerts. Evaluating Node drain times against SRE NodeDrainGracePeriod only.")
+
+	yes := r.nodeClient.IsTimeToDrain(drainStartedAtTimestamp, sreNodeDrainGracePeriodInMinutes)
+	logDrainTimes(drainStartedAtTimestamp, sreNodeDrainGracePeriodInMinutes, reqLogger)
+	if yes {
+		// Get all pods on target node and delete them
+		reqLogger.Info(fmt.Sprintf("Node %s ready to drain.", instance.Name))
+		deletePods, err := r.nodeClient.GetPodsFromNode(r.client, instance)
+		if err != nil {
+			return reconcile.Result{}, err
+		}
+		if len(deletePods.Items) == 0 {
+			// TODO: Alert for unknown condition?
+			return reconcile.Result{}, fmt.Errorf(fmt.Sprintf("Node %s identified as draining but has no pods", instance.Name))
+		}
+		for _, pod := range deletePods.Items {
+			err = poddeleter.ForceDeletePod(r.client, &pod)
+			if err != nil {
+				return reconcile.Result{}, err
+			}
+			reqLogger.Info(fmt.Sprintf("Sucessfully deleted pod %s from Node %s", pod.Name, instance.Name))
+		}
+		return reconcile.Result{}, nil
+	}
+	reqLogger.Info(fmt.Sprintf("Node %s not ready to drain.", instance.Name))
 	return reconcile.Result{}, nil
 }
 
