@@ -7,8 +7,8 @@ echo "Pushing new image"
 bash hack/push-local-image.sh
 
 echo "Deleting configmap, crd and cr"
-oc delete -f deploy/crds/upgrade.managed.openshift.io_upgradeconfigs_crd.yaml
 oc delete -f deploy/crds/upgrade.managed.openshift.io_v1alpha1_upgradeconfig_cr.yaml
+oc delete -f deploy/crds/upgrade.managed.openshift.io_upgradeconfigs_crd.yaml
 oc delete -f deploy/managed-upgrade-operator-config.yaml
 
 echo "Creating configmap, crd and cr"
