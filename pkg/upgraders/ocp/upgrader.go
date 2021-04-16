@@ -30,7 +30,6 @@ import (
 var (
 	steps                  UpgradeSteps
 	ocpUpgradeStepOrdering = []upgradev1alpha1.UpgradeConditionType{
-		upgradev1alpha1.SendStartedNotification,
 		upgradev1alpha1.UpgradeDelayedCheck,
 		upgradev1alpha1.UpgradePreHealthCheck,
 		upgradev1alpha1.ExtDepAvailabilityCheck,
@@ -46,7 +45,6 @@ var (
 		upgradev1alpha1.PostUpgradeVerification,
 		upgradev1alpha1.RemoveMaintWindow,
 		upgradev1alpha1.PostClusterHealthCheck,
-		upgradev1alpha1.SendCompletedNotification,
 	}
 )
 
@@ -77,7 +75,6 @@ func NewClient(c client.Client, cfm configmanager.ConfigManager, mc metrics.Metr
 	}
 
 	steps = map[upgradev1alpha1.UpgradeConditionType]UpgradeStep{
-		upgradev1alpha1.SendStartedNotification:       SendStartedNotification,
 		upgradev1alpha1.UpgradeDelayedCheck:           UpgradeDelayedCheck,
 		upgradev1alpha1.UpgradePreHealthCheck:         PreClusterHealthCheck,
 		upgradev1alpha1.ExtDepAvailabilityCheck:       ExternalDependencyAvailabilityCheck,
@@ -93,7 +90,6 @@ func NewClient(c client.Client, cfm configmanager.ConfigManager, mc metrics.Metr
 		upgradev1alpha1.PostUpgradeVerification:       PostUpgradeVerification,
 		upgradev1alpha1.RemoveMaintWindow:             RemoveMaintWindow,
 		upgradev1alpha1.PostClusterHealthCheck:        PostClusterHealthCheck,
-		upgradev1alpha1.SendCompletedNotification:     SendCompletedNotification,
 	}
 
 	return &ocpClusterUpgrader{
@@ -510,15 +506,6 @@ func ControlPlaneUpgraded(c client.Client, cfg *ocpUpgradeConfig, scaler scaler.
 	return false, nil
 }
 
-// SendStartedNotification sends a notification on upgrade commencement
-func SendStartedNotification(c client.Client, cfg *ocpUpgradeConfig, scaler scaler.Scaler, dsb drain.NodeDrainStrategyBuilder, metricsClient metrics.Metrics, m maintenance.Maintenance, cvClient cv.ClusterVersion, nc eventmanager.EventManager, upgradeConfig *upgradev1alpha1.UpgradeConfig, machinery machinery.Machinery, availabilityCheckers ac.AvailabilityCheckers, logger logr.Logger) (bool, error) {
-	err := nc.Notify(notifier.StateStarted)
-	if err != nil {
-		return false, err
-	}
-	return true, nil
-}
-
 // UpgradeDelayedCheck checks and sends a notification on a delay to upgrade commencement
 func UpgradeDelayedCheck(c client.Client, cfg *ocpUpgradeConfig, scaler scaler.Scaler, dsb drain.NodeDrainStrategyBuilder, metricsClient metrics.Metrics, m maintenance.Maintenance, cvClient cv.ClusterVersion, nc eventmanager.EventManager, upgradeConfig *upgradev1alpha1.UpgradeConfig, machinery machinery.Machinery, availabilityCheckers ac.AvailabilityCheckers, logger logr.Logger) (bool, error) {
 
@@ -546,15 +533,6 @@ func UpgradeDelayedCheck(c client.Client, cfg *ocpUpgradeConfig, scaler scaler.S
 		if err != nil {
 			return false, err
 		}
-	}
-	return true, nil
-}
-
-// SendCompletedNotification sends a notification on upgrade completion
-func SendCompletedNotification(c client.Client, cfg *ocpUpgradeConfig, scaler scaler.Scaler, dsb drain.NodeDrainStrategyBuilder, metricsClient metrics.Metrics, m maintenance.Maintenance, cvClient cv.ClusterVersion, nc eventmanager.EventManager, upgradeConfig *upgradev1alpha1.UpgradeConfig, machinery machinery.Machinery, availabilityCheckers ac.AvailabilityCheckers, logger logr.Logger) (bool, error) {
-	err := nc.Notify(notifier.StateCompleted)
-	if err != nil {
-		return false, err
 	}
 	return true, nil
 }
