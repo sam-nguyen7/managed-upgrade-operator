@@ -1,10 +1,10 @@
 #!/bin/bash
 
 echo "Building new image"
-bash build-local-image.sh
+bash hack/build-local-image.sh
 
 echo "Pushing new image"
-bash push-local-image.sh
+bash hack/push-local-image.sh
 
 echo "Deleting configmap, crd and cr"
 oc delete -f deploy/crds/upgrade.managed.openshift.io_upgradeconfigs_crd.yaml
