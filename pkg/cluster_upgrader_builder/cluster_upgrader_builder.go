@@ -9,6 +9,7 @@ import (
 	"github.com/openshift/managed-upgrade-operator/pkg/configmanager"
 	"github.com/openshift/managed-upgrade-operator/pkg/metrics"
 	"github.com/openshift/managed-upgrade-operator/pkg/upgraders/osd"
+	"github.com/openshift/managed-upgrade-operator/pkg/upgraders/ocp"
 )
 
 // Interface describing the functions of a cluster upgrader.
@@ -32,6 +33,12 @@ func (cub *clusterUpgraderBuilder) NewClient(c client.Client, cfm configmanager.
 	switch upgradeType {
 	case upgradev1alpha1.OSD:
 		cu, err := osd.NewClient(c, cfm, mc, nc)
+		if err != nil {
+			return nil, err
+		}
+		return cu, nil
+	case upgradev1alpha1.OCP:
+		cu, err := ocp.NewClient(c, cfm, mc, nc)
 		if err != nil {
 			return nil, err
 		}

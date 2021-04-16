@@ -90,6 +90,7 @@ spec:
               enum:
                 - OSD
                 - ARO
+                - OCP
               type: string
             upgradeAt:
               description: Specify the upgrade start time
