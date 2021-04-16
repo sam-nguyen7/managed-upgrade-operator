@@ -34,14 +34,14 @@ var (
 		upgradev1alpha1.UpgradeDelayedCheck,
 		upgradev1alpha1.UpgradePreHealthCheck,
 		upgradev1alpha1.ExtDepAvailabilityCheck,
-		upgradev1alpha1.UpgradeScaleUpExtraNodes,
+		//upgradev1alpha1.UpgradeScaleUpExtraNodes,
 		upgradev1alpha1.ControlPlaneMaintWindow,
 		upgradev1alpha1.CommenceUpgrade,
 		upgradev1alpha1.ControlPlaneUpgraded,
 		upgradev1alpha1.RemoveControlPlaneMaintWindow,
 		upgradev1alpha1.WorkersMaintWindow,
 		upgradev1alpha1.AllWorkerNodesUpgraded,
-		upgradev1alpha1.RemoveExtraScaledNodes,
+		//upgradev1alpha1.RemoveExtraScaledNodes,
 		upgradev1alpha1.UpdateSubscriptions,
 		upgradev1alpha1.PostUpgradeVerification,
 		upgradev1alpha1.RemoveMaintWindow,
@@ -77,23 +77,23 @@ func NewClient(c client.Client, cfm configmanager.ConfigManager, mc metrics.Metr
 	}
 
 	steps = map[upgradev1alpha1.UpgradeConditionType]UpgradeStep{
-		upgradev1alpha1.SendStartedNotification:       SendStartedNotification,
-		upgradev1alpha1.UpgradeDelayedCheck:           UpgradeDelayedCheck,
-		upgradev1alpha1.UpgradePreHealthCheck:         PreClusterHealthCheck,
-		upgradev1alpha1.ExtDepAvailabilityCheck:       ExternalDependencyAvailabilityCheck,
-		upgradev1alpha1.UpgradeScaleUpExtraNodes:      EnsureExtraUpgradeWorkers,
+		upgradev1alpha1.SendStartedNotification: SendStartedNotification,
+		upgradev1alpha1.UpgradeDelayedCheck:     UpgradeDelayedCheck,
+		upgradev1alpha1.UpgradePreHealthCheck:   PreClusterHealthCheck,
+		upgradev1alpha1.ExtDepAvailabilityCheck: ExternalDependencyAvailabilityCheck,
+		//upgradev1alpha1.UpgradeScaleUpExtraNodes:      EnsureExtraUpgradeWorkers,
 		upgradev1alpha1.ControlPlaneMaintWindow:       CreateControlPlaneMaintWindow,
 		upgradev1alpha1.CommenceUpgrade:               CommenceUpgrade,
 		upgradev1alpha1.ControlPlaneUpgraded:          ControlPlaneUpgraded,
 		upgradev1alpha1.RemoveControlPlaneMaintWindow: RemoveControlPlaneMaintWindow,
 		upgradev1alpha1.WorkersMaintWindow:            CreateWorkerMaintWindow,
 		upgradev1alpha1.AllWorkerNodesUpgraded:        AllWorkersUpgraded,
-		upgradev1alpha1.RemoveExtraScaledNodes:        RemoveExtraScaledNodes,
-		upgradev1alpha1.UpdateSubscriptions:           UpdateSubscriptions,
-		upgradev1alpha1.PostUpgradeVerification:       PostUpgradeVerification,
-		upgradev1alpha1.RemoveMaintWindow:             RemoveMaintWindow,
-		upgradev1alpha1.PostClusterHealthCheck:        PostClusterHealthCheck,
-		upgradev1alpha1.SendCompletedNotification:     SendCompletedNotification,
+		//upgradev1alpha1.RemoveExtraScaledNodes:        RemoveExtraScaledNodes,
+		upgradev1alpha1.UpdateSubscriptions:       UpdateSubscriptions,
+		upgradev1alpha1.PostUpgradeVerification:   PostUpgradeVerification,
+		upgradev1alpha1.RemoveMaintWindow:         RemoveMaintWindow,
+		upgradev1alpha1.PostClusterHealthCheck:    PostClusterHealthCheck,
+		upgradev1alpha1.SendCompletedNotification: SendCompletedNotification,
 	}
 
 	return &ocpClusterUpgrader{
@@ -150,32 +150,32 @@ func PreClusterHealthCheck(c client.Client, cfg *ocpUpgradeConfig, scaler scaler
 	return true, nil
 }
 
-// EnsureExtraUpgradeWorkers will scale up new workers to ensure customer capacity while upgrading.
-func EnsureExtraUpgradeWorkers(c client.Client, cfg *ocpUpgradeConfig, s scaler.Scaler, dsb drain.NodeDrainStrategyBuilder, metricsClient metrics.Metrics, m maintenance.Maintenance, cvClient cv.ClusterVersion, nc eventmanager.EventManager, upgradeConfig *upgradev1alpha1.UpgradeConfig, machinery machinery.Machinery, availabilityCheckers ac.AvailabilityCheckers, logger logr.Logger) (bool, error) {
-	upgradeCommenced, err := cvClient.HasUpgradeCommenced(upgradeConfig)
-	if err != nil {
-		return false, err
-	}
-	desired := upgradeConfig.Spec.Desired
-	if upgradeCommenced {
-		logger.Info(fmt.Sprintf("ClusterVersion is already set to Channel %s Version %s, skipping %s", desired.Channel, desired.Version, upgradev1alpha1.UpgradeScaleUpExtraNodes))
-		return true, nil
-	}
-
-	isScaled, err := s.EnsureScaleUpNodes(c, cfg.GetScaleDuration(), logger)
-	if err != nil {
-		if scaler.IsScaleTimeOutError(err) {
-			metricsClient.UpdateMetricScalingFailed(upgradeConfig.Name)
-		}
-		return false, err
-	}
-
-	if isScaled {
-		metricsClient.UpdateMetricScalingSucceeded(upgradeConfig.Name)
-	}
-
-	return isScaled, nil
-}
+//// EnsureExtraUpgradeWorkers will scale up new workers to ensure customer capacity while upgrading.
+//func EnsureExtraUpgradeWorkers(c client.Client, cfg *ocpUpgradeConfig, s scaler.Scaler, dsb drain.NodeDrainStrategyBuilder, metricsClient metrics.Metrics, m maintenance.Maintenance, cvClient cv.ClusterVersion, nc eventmanager.EventManager, upgradeConfig *upgradev1alpha1.UpgradeConfig, machinery machinery.Machinery, availabilityCheckers ac.AvailabilityCheckers, logger logr.Logger) (bool, error) {
+//	upgradeCommenced, err := cvClient.HasUpgradeCommenced(upgradeConfig)
+//	if err != nil {
+//		return false, err
+//	}
+//	desired := upgradeConfig.Spec.Desired
+//	if upgradeCommenced {
+//		logger.Info(fmt.Sprintf("ClusterVersion is already set to Channel %s Version %s, skipping %s", desired.Channel, desired.Version, upgradev1alpha1.UpgradeScaleUpExtraNodes))
+//		return true, nil
+//	}
+//
+//	isScaled, err := s.EnsureScaleUpNodes(c, cfg.GetScaleDuration(), logger)
+//	if err != nil {
+//		if scaler.IsScaleTimeOutError(err) {
+//			metricsClient.UpdateMetricScalingFailed(upgradeConfig.Name)
+//		}
+//		return false, err
+//	}
+//
+//	if isScaled {
+//		metricsClient.UpdateMetricScalingSucceeded(upgradeConfig.Name)
+//	}
+//
+//	return isScaled, nil
+//}
 
 // ExternalDependencyAvailabilityCheck validates that external dependencies of the upgrade are available.
 func ExternalDependencyAvailabilityCheck(c client.Client, cfg *ocpUpgradeConfig, s scaler.Scaler, dsb drain.NodeDrainStrategyBuilder, metricsClient metrics.Metrics, m maintenance.Maintenance, cvClient cv.ClusterVersion, nc eventmanager.EventManager, upgradeConfig *upgradev1alpha1.UpgradeConfig, machinery machinery.Machinery, availabilityCheckers ac.AvailabilityCheckers, logger logr.Logger) (bool, error) {
@@ -323,28 +323,28 @@ func AllWorkersUpgraded(c client.Client, cfg *ocpUpgradeConfig, scaler scaler.Sc
 	return true, nil
 }
 
-// RemoveExtraScaledNodes will scale down the extra workers added pre upgrade.
-func RemoveExtraScaledNodes(c client.Client, cfg *ocpUpgradeConfig, s scaler.Scaler, dsb drain.NodeDrainStrategyBuilder, metricsClient metrics.Metrics, m maintenance.Maintenance, cvClient cv.ClusterVersion, nc eventmanager.EventManager, upgradeConfig *upgradev1alpha1.UpgradeConfig, machinery machinery.Machinery, availabilityCheckers ac.AvailabilityCheckers, logger logr.Logger) (bool, error) {
-	nds, err := dsb.NewNodeDrainStrategy(c, upgradeConfig, &cfg.NodeDrain)
-	if err != nil {
-		return false, err
-	}
-	isScaledDown, err := s.EnsureScaleDownNodes(c, nds, logger)
-	if err != nil {
-		dtErr, ok := scaler.IsDrainTimeOutError(err)
-		if ok {
-			metricsClient.UpdateMetricNodeDrainFailed(dtErr.GetNodeName())
-		}
-		logger.Error(err, "Extra upgrade node failed to drain in time")
-		return false, err
-	}
-
-	if isScaledDown {
-		metricsClient.ResetAllMetricNodeDrainFailed()
-	}
-
-	return isScaledDown, nil
-}
+//// RemoveExtraScaledNodes will scale down the extra workers added pre upgrade.
+//func RemoveExtraScaledNodes(c client.Client, cfg *ocpUpgradeConfig, s scaler.Scaler, dsb drain.NodeDrainStrategyBuilder, metricsClient metrics.Metrics, m maintenance.Maintenance, cvClient cv.ClusterVersion, nc eventmanager.EventManager, upgradeConfig *upgradev1alpha1.UpgradeConfig, machinery machinery.Machinery, availabilityCheckers ac.AvailabilityCheckers, logger logr.Logger) (bool, error) {
+//	nds, err := dsb.NewNodeDrainStrategy(c, upgradeConfig, &cfg.NodeDrain)
+//	if err != nil {
+//		return false, err
+//	}
+//	isScaledDown, err := s.EnsureScaleDownNodes(c, nds, logger)
+//	if err != nil {
+//		dtErr, ok := scaler.IsDrainTimeOutError(err)
+//		if ok {
+//			metricsClient.UpdateMetricNodeDrainFailed(dtErr.GetNodeName())
+//		}
+//		logger.Error(err, "Extra upgrade node failed to drain in time")
+//		return false, err
+//	}
+//
+//	if isScaledDown {
+//		metricsClient.ResetAllMetricNodeDrainFailed()
+//	}
+//
+//	return isScaledDown, nil
+//}
 
 // UpdateSubscriptions will update the subscriptions for the 3rd party components, like logging
 func UpdateSubscriptions(c client.Client, cfg *ocpUpgradeConfig, scaler scaler.Scaler, dsb drain.NodeDrainStrategyBuilder, metricsClient metrics.Metrics, m maintenance.Maintenance, cvClient cv.ClusterVersion, nc eventmanager.EventManager, upgradeConfig *upgradev1alpha1.UpgradeConfig, machinery machinery.Machinery, availabilityCheckers ac.AvailabilityCheckers, logger logr.Logger) (bool, error) {
