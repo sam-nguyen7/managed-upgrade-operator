@@ -35,16 +35,16 @@ var (
 		upgradev1alpha1.UpgradePreHealthCheck,
 		upgradev1alpha1.ExtDepAvailabilityCheck,
 		//upgradev1alpha1.UpgradeScaleUpExtraNodes,
-		upgradev1alpha1.ControlPlaneMaintWindow,
+		//upgradev1alpha1.ControlPlaneMaintWindow,
 		upgradev1alpha1.CommenceUpgrade,
 		upgradev1alpha1.ControlPlaneUpgraded,
-		upgradev1alpha1.RemoveControlPlaneMaintWindow,
-		upgradev1alpha1.WorkersMaintWindow,
+		//upgradev1alpha1.RemoveControlPlaneMaintWindow,
+		//upgradev1alpha1.WorkersMaintWindow,
 		upgradev1alpha1.AllWorkerNodesUpgraded,
 		//upgradev1alpha1.RemoveExtraScaledNodes,
 		upgradev1alpha1.UpdateSubscriptions,
 		upgradev1alpha1.PostUpgradeVerification,
-		upgradev1alpha1.RemoveMaintWindow,
+		//upgradev1alpha1.RemoveMaintWindow,
 		upgradev1alpha1.PostClusterHealthCheck,
 		upgradev1alpha1.SendCompletedNotification,
 	}
@@ -82,16 +82,16 @@ func NewClient(c client.Client, cfm configmanager.ConfigManager, mc metrics.Metr
 		upgradev1alpha1.UpgradePreHealthCheck:   PreClusterHealthCheck,
 		upgradev1alpha1.ExtDepAvailabilityCheck: ExternalDependencyAvailabilityCheck,
 		//upgradev1alpha1.UpgradeScaleUpExtraNodes:      EnsureExtraUpgradeWorkers,
-		upgradev1alpha1.ControlPlaneMaintWindow:       CreateControlPlaneMaintWindow,
-		upgradev1alpha1.CommenceUpgrade:               CommenceUpgrade,
-		upgradev1alpha1.ControlPlaneUpgraded:          ControlPlaneUpgraded,
-		upgradev1alpha1.RemoveControlPlaneMaintWindow: RemoveControlPlaneMaintWindow,
-		upgradev1alpha1.WorkersMaintWindow:            CreateWorkerMaintWindow,
-		upgradev1alpha1.AllWorkerNodesUpgraded:        AllWorkersUpgraded,
+		//upgradev1alpha1.ControlPlaneMaintWindow:       CreateControlPlaneMaintWindow,
+		upgradev1alpha1.CommenceUpgrade:      CommenceUpgrade,
+		upgradev1alpha1.ControlPlaneUpgraded: ControlPlaneUpgraded,
+		//upgradev1alpha1.RemoveControlPlaneMaintWindow: RemoveControlPlaneMaintWindow,
+		//upgradev1alpha1.WorkersMaintWindow:            CreateWorkerMaintWindow,
+		upgradev1alpha1.AllWorkerNodesUpgraded: AllWorkersUpgraded,
 		//upgradev1alpha1.RemoveExtraScaledNodes:        RemoveExtraScaledNodes,
-		upgradev1alpha1.UpdateSubscriptions:       UpdateSubscriptions,
-		upgradev1alpha1.PostUpgradeVerification:   PostUpgradeVerification,
-		upgradev1alpha1.RemoveMaintWindow:         RemoveMaintWindow,
+		upgradev1alpha1.UpdateSubscriptions:     UpdateSubscriptions,
+		upgradev1alpha1.PostUpgradeVerification: PostUpgradeVerification,
+		//upgradev1alpha1.RemoveMaintWindow:         RemoveMaintWindow,
 		upgradev1alpha1.PostClusterHealthCheck:    PostClusterHealthCheck,
 		upgradev1alpha1.SendCompletedNotification: SendCompletedNotification,
 	}
@@ -231,70 +231,70 @@ func CommenceUpgrade(c client.Client, cfg *ocpUpgradeConfig, scaler scaler.Scale
 	return isComplete, nil
 }
 
-// CreateControlPlaneMaintWindow creates the maintenance window for control plane
-func CreateControlPlaneMaintWindow(c client.Client, cfg *ocpUpgradeConfig, scaler scaler.Scaler, dsb drain.NodeDrainStrategyBuilder, metricsClient metrics.Metrics, m maintenance.Maintenance, cvClient cv.ClusterVersion, nc eventmanager.EventManager, upgradeConfig *upgradev1alpha1.UpgradeConfig, machinery machinery.Machinery, availabilityCheckers ac.AvailabilityCheckers, logger logr.Logger) (bool, error) {
-	endTime := time.Now().Add(cfg.Maintenance.GetControlPlaneDuration())
-	err := m.StartControlPlane(endTime, upgradeConfig.Spec.Desired.Version, cfg.Maintenance.IgnoredAlerts.ControlPlaneCriticals)
-	if err != nil {
-		return false, err
-	}
+//// CreateControlPlaneMaintWindow creates the maintenance window for control plane
+//func CreateControlPlaneMaintWindow(c client.Client, cfg *ocpUpgradeConfig, scaler scaler.Scaler, dsb drain.NodeDrainStrategyBuilder, metricsClient metrics.Metrics, m maintenance.Maintenance, cvClient cv.ClusterVersion, nc eventmanager.EventManager, upgradeConfig *upgradev1alpha1.UpgradeConfig, machinery machinery.Machinery, availabilityCheckers ac.AvailabilityCheckers, logger logr.Logger) (bool, error) {
+//	endTime := time.Now().Add(cfg.Maintenance.GetControlPlaneDuration())
+//	err := m.StartControlPlane(endTime, upgradeConfig.Spec.Desired.Version, cfg.Maintenance.IgnoredAlerts.ControlPlaneCriticals)
+//	if err != nil {
+//		return false, err
+//	}
+//
+//	return true, nil
+//}
 
-	return true, nil
-}
+//// RemoveControlPlaneMaintWindow removes the maintenance window for control plane
+//func RemoveControlPlaneMaintWindow(c client.Client, cfg *ocpUpgradeConfig, scaler scaler.Scaler, dsb drain.NodeDrainStrategyBuilder, metricsClient metrics.Metrics, m maintenance.Maintenance, cvClient cv.ClusterVersion, nc eventmanager.EventManager, upgradeConfig *upgradev1alpha1.UpgradeConfig, machinery machinery.Machinery, availabilityCheckers ac.AvailabilityCheckers, logger logr.Logger) (bool, error) {
+//	err := m.EndControlPlane()
+//	if err != nil {
+//		return false, err
+//	}
+//
+//	return true, nil
+//}
 
-// RemoveControlPlaneMaintWindow removes the maintenance window for control plane
-func RemoveControlPlaneMaintWindow(c client.Client, cfg *ocpUpgradeConfig, scaler scaler.Scaler, dsb drain.NodeDrainStrategyBuilder, metricsClient metrics.Metrics, m maintenance.Maintenance, cvClient cv.ClusterVersion, nc eventmanager.EventManager, upgradeConfig *upgradev1alpha1.UpgradeConfig, machinery machinery.Machinery, availabilityCheckers ac.AvailabilityCheckers, logger logr.Logger) (bool, error) {
-	err := m.EndControlPlane()
-	if err != nil {
-		return false, err
-	}
-
-	return true, nil
-}
-
-// CreateWorkerMaintWindow creates the maintenance window for workers
-func CreateWorkerMaintWindow(c client.Client, cfg *ocpUpgradeConfig, scaler scaler.Scaler, dsb drain.NodeDrainStrategyBuilder, metricsClient metrics.Metrics, m maintenance.Maintenance, cvClient cv.ClusterVersion, nc eventmanager.EventManager, upgradeConfig *upgradev1alpha1.UpgradeConfig, machinery machinery.Machinery, availabilityCheckers ac.AvailabilityCheckers, logger logr.Logger) (bool, error) {
-	upgradingResult, err := machinery.IsUpgrading(c, "worker")
-	if err != nil {
-		return false, err
-	}
-
-	// Depending on how long the Control Plane takes all workers may be already upgraded.
-	if !upgradingResult.IsUpgrading {
-		logger.Info(fmt.Sprintf("Worker nodes are already upgraded. Skipping worker maintenace for %s", upgradeConfig.Spec.Desired.Version))
-		return true, nil
-	}
-
-	pendingWorkerCount := upgradingResult.MachineCount - upgradingResult.UpdatedCount
-	if pendingWorkerCount < 1 {
-		logger.Info("No worker node left for upgrading.")
-		return true, nil
-	}
-
-	// We use the maximum of the PDB drain timeout and node drain timeout to compute a 'worst case' wait time
-	pdbForceDrainTimeout := time.Duration(upgradeConfig.Spec.PDBForceDrainTimeout) * time.Minute
-	nodeDrainTimeout := cfg.NodeDrain.GetTimeOutDuration()
-	waitTimePeriod := time.Duration(pendingWorkerCount) * pdbForceDrainTimeout
-	if pdbForceDrainTimeout < nodeDrainTimeout {
-		waitTimePeriod = time.Duration(pendingWorkerCount) * nodeDrainTimeout
-	}
-
-	// Action time is the expected time taken to upgrade a worker node
-	maintenanceDurationPerNode := cfg.NodeDrain.GetExpectedDrainDuration()
-	actionTimePeriod := time.Duration(pendingWorkerCount) * maintenanceDurationPerNode
-
-	// Our worker maintenance window is a combination of 'wait time' and 'action time'
-	totalWorkerMaintenanceDuration := waitTimePeriod + actionTimePeriod
-
-	endTime := time.Now().Add(totalWorkerMaintenanceDuration)
-	logger.Info(fmt.Sprintf("Creating worker node maintenace for %d remaining nodes if no previous silence, ending at %v", pendingWorkerCount, endTime))
-	err = m.SetWorker(endTime, upgradeConfig.Spec.Desired.Version, pendingWorkerCount)
-	if err != nil {
-		return false, err
-	}
-
-	return true, nil
-}
+//// CreateWorkerMaintWindow creates the maintenance window for workers
+//func CreateWorkerMaintWindow(c client.Client, cfg *ocpUpgradeConfig, scaler scaler.Scaler, dsb drain.NodeDrainStrategyBuilder, metricsClient metrics.Metrics, m maintenance.Maintenance, cvClient cv.ClusterVersion, nc eventmanager.EventManager, upgradeConfig *upgradev1alpha1.UpgradeConfig, machinery machinery.Machinery, availabilityCheckers ac.AvailabilityCheckers, logger logr.Logger) (bool, error) {
+//	upgradingResult, err := machinery.IsUpgrading(c, "worker")
+//	if err != nil {
+//		return false, err
+//	}
+//
+//	// Depending on how long the Control Plane takes all workers may be already upgraded.
+//	if !upgradingResult.IsUpgrading {
+//		logger.Info(fmt.Sprintf("Worker nodes are already upgraded. Skipping worker maintenace for %s", upgradeConfig.Spec.Desired.Version))
+//		return true, nil
+//	}
+//
+//	pendingWorkerCount := upgradingResult.MachineCount - upgradingResult.UpdatedCount
+//	if pendingWorkerCount < 1 {
+//		logger.Info("No worker node left for upgrading.")
+//		return true, nil
+//	}
+//
+//	// We use the maximum of the PDB drain timeout and node drain timeout to compute a 'worst case' wait time
+//	pdbForceDrainTimeout := time.Duration(upgradeConfig.Spec.PDBForceDrainTimeout) * time.Minute
+//	nodeDrainTimeout := cfg.NodeDrain.GetTimeOutDuration()
+//	waitTimePeriod := time.Duration(pendingWorkerCount) * pdbForceDrainTimeout
+//	if pdbForceDrainTimeout < nodeDrainTimeout {
+//		waitTimePeriod = time.Duration(pendingWorkerCount) * nodeDrainTimeout
+//	}
+//
+//	// Action time is the expected time taken to upgrade a worker node
+//	maintenanceDurationPerNode := cfg.NodeDrain.GetExpectedDrainDuration()
+//	actionTimePeriod := time.Duration(pendingWorkerCount) * maintenanceDurationPerNode
+//
+//	// Our worker maintenance window is a combination of 'wait time' and 'action time'
+//	totalWorkerMaintenanceDuration := waitTimePeriod + actionTimePeriod
+//
+//	endTime := time.Now().Add(totalWorkerMaintenanceDuration)
+//	logger.Info(fmt.Sprintf("Creating worker node maintenace for %d remaining nodes if no previous silence, ending at %v", pendingWorkerCount, endTime))
+//	err = m.SetWorker(endTime, upgradeConfig.Spec.Desired.Version, pendingWorkerCount)
+//	if err != nil {
+//		return false, err
+//	}
+//
+//	return true, nil
+//}
 
 // AllWorkersUpgraded checks whether all the worker nodes are ready with new config
 func AllWorkersUpgraded(c client.Client, cfg *ocpUpgradeConfig, scaler scaler.Scaler, dsb drain.NodeDrainStrategyBuilder, metricsClient metrics.Metrics, m maintenance.Maintenance, cvClient cv.ClusterVersion, nc eventmanager.EventManager, upgradeConfig *upgradev1alpha1.UpgradeConfig, machinery machinery.Machinery, availabilityCheckers ac.AvailabilityCheckers, logger logr.Logger) (bool, error) {
@@ -459,15 +459,15 @@ func performUpgradeVerification(c client.Client, cfg *ocpUpgradeConfig, metricsC
 	return true, nil
 }
 
-// RemoveMaintWindow removes all the maintenance windows we created during the upgrade
-func RemoveMaintWindow(c client.Client, cfg *ocpUpgradeConfig, scaler scaler.Scaler, dsb drain.NodeDrainStrategyBuilder, metricsClient metrics.Metrics, m maintenance.Maintenance, cvClient cv.ClusterVersion, nc eventmanager.EventManager, upgradeConfig *upgradev1alpha1.UpgradeConfig, machinery machinery.Machinery, availabilityCheckers ac.AvailabilityCheckers, logger logr.Logger) (bool, error) {
-	err := m.EndWorker()
-	if err != nil {
-		return false, err
-	}
-
-	return true, nil
-}
+//// RemoveMaintWindow removes all the maintenance windows we created during the upgrade
+//func RemoveMaintWindow(c client.Client, cfg *ocpUpgradeConfig, scaler scaler.Scaler, dsb drain.NodeDrainStrategyBuilder, metricsClient metrics.Metrics, m maintenance.Maintenance, cvClient cv.ClusterVersion, nc eventmanager.EventManager, upgradeConfig *upgradev1alpha1.UpgradeConfig, machinery machinery.Machinery, availabilityCheckers ac.AvailabilityCheckers, logger logr.Logger) (bool, error) {
+//	err := m.EndWorker()
+//	if err != nil {
+//		return false, err
+//	}
+//
+//	return true, nil
+//}
 
 // PostClusterHealthCheck performs cluster health check after upgrade
 func PostClusterHealthCheck(c client.Client, cfg *ocpUpgradeConfig, scaler scaler.Scaler, dsb drain.NodeDrainStrategyBuilder, metricsClient metrics.Metrics, m maintenance.Maintenance, cvClient cv.ClusterVersion, nc eventmanager.EventManager, upgradeConfig *upgradev1alpha1.UpgradeConfig, machinery machinery.Machinery, availabilityCheckers ac.AvailabilityCheckers, logger logr.Logger) (bool, error) {
