@@ -2,6 +2,7 @@ package metrics
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -108,6 +109,7 @@ func (prt *prometheusRoundTripper) RoundTrip(req *http.Request) (*http.Response,
 	req.Header.Add("Authorization", "Bearer "+prt.token)
 	transport := http.Transport{
 		TLSHandshakeTimeout: time.Second * 5,
+		TLSClientConfig:     &tls.Config{InsecureSkipVerify: true},
 	}
 	return transport.RoundTrip(req)
 }
