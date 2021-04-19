@@ -2,12 +2,14 @@ package alertmanager
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
+	"net/http"
+
 	httptransport "github.com/go-openapi/runtime/client"
 	"github.com/go-openapi/strfmt"
 	amSilence "github.com/prometheus/alertmanager/api/v2/client/silence"
 	amv2Models "github.com/prometheus/alertmanager/api/v2/models"
-	"net/http"
 )
 
 //go:generate mockgen -destination=mocks/alertManagerSilenceClient.go -package=mocks github.com/openshift/managed-upgrade-operator/pkg/alertmanager AlertManagerSilencer
@@ -25,6 +27,10 @@ type AlertManagerSilenceClient struct {
 
 // Creates a silence in Alertmanager instance defined in Transport
 func (ams *AlertManagerSilenceClient) Create(matchers amv2Models.Matchers, startsAt strfmt.DateTime, endsAt strfmt.DateTime, creator string, comment string) error {
+
+	tr := &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	}
 	pParams := &amSilence.PostSilencesParams{
 		Silence: &amv2Models.PostableSilence{
 			Silence: amv2Models.Silence{
@@ -36,7 +42,7 @@ func (ams *AlertManagerSilenceClient) Create(matchers amv2Models.Matchers, start
 			},
 		},
 		Context:    context.TODO(),
-		HTTPClient: &http.Client{},
+		HTTPClient: &http.Client{Transport: tr},
 	}
 
 	silenceClient := amSilence.New(ams.Transport, strfmt.Default)
@@ -50,10 +56,13 @@ func (ams *AlertManagerSilenceClient) Create(matchers amv2Models.Matchers, start
 
 // list silences in Alertmanager instance defined in Transport
 func (ams *AlertManagerSilenceClient) List(filter []string) (*amSilence.GetSilencesOK, error) {
+	tr := &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	}
 	gParams := &amSilence.GetSilencesParams{
 		Filter:     filter,
 		Context:    context.TODO(),
-		HTTPClient: &http.Client{},
+		HTTPClient: &http.Client{Transport: tr},
 	}
 
 	silenceClient := amSilence.New(ams.Transport, strfmt.Default)
@@ -67,10 +76,14 @@ func (ams *AlertManagerSilenceClient) List(filter []string) (*amSilence.GetSilen
 
 // Delete silence in Alertmanager instance defined in Transport
 func (ams *AlertManagerSilenceClient) Delete(id string) error {
+	tr := &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	}
+
 	dParams := &amSilence.DeleteSilenceParams{
 		SilenceID:  strfmt.UUID(id),
 		Context:    context.TODO(),
-		HTTPClient: &http.Client{},
+		HTTPClient: &http.Client{Transport: tr},
 	}
 
 	silenceClient := amSilence.New(ams.Transport, strfmt.Default)
@@ -84,11 +97,14 @@ func (ams *AlertManagerSilenceClient) Delete(id string) error {
 
 // Update silence end time in AlertManager instance defined in Transport
 func (ams *AlertManagerSilenceClient) Update(id string, endsAt strfmt.DateTime) error {
+	tr := &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	}
 	silenceClient := amSilence.New(ams.Transport, strfmt.Default)
 	gParams := &amSilence.GetSilenceParams{
 		SilenceID:  strfmt.UUID(id),
 		Context:    context.TODO(),
-		HTTPClient: &http.Client{},
+		HTTPClient: &http.Client{Transport: tr},
 	}
 	result, err := silenceClient.GetSilence(gParams)
 	if err != nil {
